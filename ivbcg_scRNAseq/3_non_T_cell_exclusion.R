@@ -18,17 +18,13 @@ dg0h_dm <- readRDS(file = "out/seurat_objects/dg0h_adt_norm.rds")
 v113_dm <- readRDS(file = "out/seurat_objects/v113_adt_norm.rds")
 v015_dm <- readRDS(file = "out/seurat_objects/v015_adt_norm.rds")
 
-###############################################
-##                                           ##
-## Cluster the cells based on their RNA data ##
-##                                           ##
-## Overlay ADT plots with ADT/RNA Expression ## 
-##                                           ##
-## Overlay RNA plots with ADt/RNA Expression ##
-##                                           ##
-###############################################
 
-#DG0D
+############################################################
+## Identify cell clusters that are unlikely to be T cells ##
+############################################################
+
+## For donor DG0D:
+# Cluster the cells based on their RNA data 
 DefaultAssay(dg0d_dm) <- "RNA"
 dg0d_dm <- NormalizeData(dg0d_dm, normalization.method = "LogNormalize", scale.factor = 10000)
 dg0d_dm <- FindVariableFeatures(dg0d_dm, selection.method = "vst", nfeatures = 2000)
@@ -54,24 +50,26 @@ dg0d_markers %>%
   group_by(cluster) %>%
   top_n(n=5, wt = avg_log2FC) -> top5
 
-
+# Visualize the gene expression heat map
 avgexp <- AverageExpression(dg0d_dm, assays = "RNA", return.seurat = T)
 avgexp <- ScaleData(avgexp, features = all.genes)
 DoHeatmap(avgexp, features = c(top5$gene, "TRDV1", "TRDV3", "TRDV2", "TRGV9", "TRAC"), raster = FALSE, draw.lines = F) + NoLegend() + scale_fill_gradientn(colors = c("#00A2DA", "#FEFFB2", "#E54500")) + theme(text = element_text(size = 10))
 ggsave(file = "out/images/dg0d_rna_hm.png", width = 8, height = 8)
 
+# Cluster the cells according to ADT and visualize expression of key genes and proteins
 DefaultAssay(dg0d_dm) <- "adt"
 FeaturePlot(dg0d_dm, features = c("rna_MS4A1", "adt_CD20", "rna_CD14", "adt_CD14", "rna_CD3E", "rna_TRAC", "rna_TRDV1", "rna_TRDV3", "rna_TRDV2", "rna_TRGV9"))
 ggsave(file = "out/images/dg0d_nonT.png", width = 15, height = 10)
 
-
+# Cluster the cells according to RNA and visualize expression of key genes and proteins
 DefaultAssay(dg0d_dm) <- "RNA"
 FeaturePlot(dg0d_dm, features = c("rna_MS4A1", "adt_CD20", "rna_CD14", "adt_CD14", "rna_CD3E", "rna_TRAC", "rna_TRDV1", "rna_TRDV3", "rna_TRDV2", "rna_TRGV9"))
 ggsave(file = "out/images/dg0d_nonT_RNA.png", width = 15, height = 10)
 
 
 
-#DG0H
+# For donor DG0H:
+# Cluster the cells based on their RNA data 
 DefaultAssay(dg0h_dm) <- "RNA"
 dg0h_dm <- NormalizeData(dg0h_dm, normalization.method = "LogNormalize", scale.factor = 10000)
 dg0h_dm <- FindVariableFeatures(dg0h_dm, selection.method = "vst", nfeatures = 2000)
@@ -97,23 +95,25 @@ dg0h_markers %>%
   group_by(cluster) %>%
   top_n(n=5, wt = avg_log2FC) -> top5
 
-
+# Visualize the gene expression heat map
 avgexp <- AverageExpression(dg0h_dm, assays = "RNA", return.seurat = T)
 avgexp <- ScaleData(avgexp, features = all.genes)
 DoHeatmap(avgexp, features = c(top5$gene, "TRDV1", "TRDV3", "TRDV2", "TRGV9", "TRAC"), raster = FALSE, draw.lines = F) + NoLegend() + scale_fill_gradientn(colors = c("#00A2DA", "#FEFFB2", "#E54500")) + theme(text = element_text(size = 10))
 ggsave(file = "out/images/dg0h_rna_hm.png", width = 8, height = 8)
 
-
+# Cluster the cells according to ADT and visualize expression of key genes and proteins
 DefaultAssay(dg0h_dm) <- "adt"
 FeaturePlot(dg0h_dm, features = c("rna_MS4A1", "adt_CD20", "rna_CD14", "adt_CD14", "rna_CD3E", "rna_TRAC", "rna_TRDV1", "rna_TRDV3", "rna_TRDV2", "rna_TRGV9")) 
 ggsave(file = "out/images/dg0h_nonT.png", width = 15, height = 10)
 
+# Cluster the cells according to RNA and visualize expression of key genes and proteins
 DefaultAssay(dg0h_dm) <- "RNA"
 FeaturePlot(dg0h_dm, features = c("rna_MS4A1", "adt_CD20", "rna_CD14", "adt_CD14", "rna_CD3E", "rna_TRAC", "rna_TRDV1", "rna_TRDV3", "rna_TRDV2", "rna_TRGV9")) 
 ggsave(file = "out/images/dg0h_nonT_RNA.png", width = 15, height = 10)
 
 
-#V113
+## For donor V113:
+# Cluster the cells based on their RNA data 
 DefaultAssay(v113_dm) <- "RNA"
 v113_dm <- NormalizeData(v113_dm, normalization.method = "LogNormalize", scale.factor = 10000)
 v113_dm <- FindVariableFeatures(v113_dm, selection.method = "vst", nfeatures = 2000)
@@ -140,25 +140,26 @@ v113_markers %>%
   top_n(n=5, wt = avg_log2FC) -> top5
 DoHeatmap(v113_dm, features = top5$gene) + NoLegend()
 
-
+# Visualize the gene expression heat map
 avgexp <- AverageExpression(v113_dm, assays = "RNA", return.seurat = T)
 avgexp <- ScaleData(avgexp, features = all.genes)
 DoHeatmap(avgexp, features = c(top5$gene, "TRDV1", "TRDV3", "TRDV2", "TRGV9", "TRAC"), raster = FALSE, draw.lines = F) + NoLegend() + scale_fill_gradientn(colors = c("#00A2DA", "#FEFFB2", "#E54500")) + theme(text = element_text(size = 10))
 ggsave(file = "out/images/v113_rna_hm.png", width = 8, height = 8)
 
-
+# Cluster the cells according to ADT and visualize expression of key genes and proteins
 DefaultAssay(v113_dm) <- "adt"
 FeaturePlot(v113_dm, features = c("rna_MS4A1", "adt_CD20", "rna_CD14", "adt_CD14", "rna_CD3E", "rna_TRAC", "rna_TRDV1", "rna_TRDV3", "rna_TRDV2", "rna_TRGV9"))
 ggsave(file = "out/images/v113_nonT.png", width = 15, height = 10)
 
-
+# Cluster the cells according to RNA and visualize expression of key genes and proteins
 DefaultAssay(v113_dm) <- "RNA"
 FeaturePlot(v113_dm, features = c("rna_MS4A1", "adt_CD20", "rna_CD14", "adt_CD14", "rna_CD3E", "rna_TRAC", "rna_TRDV1", "rna_TRDV3", "rna_TRDV2", "rna_TRGV9"))
 ggsave(file = "out/images/v113_nonT_RNA.png", width = 15, height = 10)
 
 
 
-#V015
+## For donor V015:
+# Cluster the cells based on their RNA data
 DefaultAssay(v015_dm) <- "RNA"
 v015_dm <- NormalizeData(v015_dm, normalization.method = "LogNormalize", scale.factor = 10000)
 v015_dm <- FindVariableFeatures(v015_dm, selection.method = "vst", nfeatures = 2000)
@@ -185,22 +186,21 @@ v015_markers %>%
   top_n(n=5, wt = avg_log2FC) -> top5
 DoHeatmap(v015_dm, features = top5$gene) + NoLegend()
 
-
+# Visualize the gene expression heat map
 avgexp <- AverageExpression(v015_dm, assays = "RNA", return.seurat = T)
 avgexp <- ScaleData(avgexp, features = all.genes)
 DoHeatmap(avgexp, features = c(top5$gene, "TRDV1", "TRDV3", "TRDV2", "TRGV9", "TRAC"), raster = FALSE, draw.lines = F) + NoLegend() + scale_fill_gradientn(colors = c("#00A2DA", "#FEFFB2", "#E54500")) + theme(text = element_text(size = 10))
 ggsave(file = "out/images/v015_rna_hm.png", width = 8, height = 8)
 
-
+# Cluster the cells according to ADT and visualize expression of key genes and proteins
 DefaultAssay(v015_dm) <- "adt"
 FeaturePlot(v015_dm, features = c("rna_MS4A1", "adt_CD20", "rna_CD14", "adt_CD14", "rna_CD3E", "rna_TRAC", "rna_TRDV1", "rna_TRDV3", "rna_TRDV2", "rna_TRGV9"))
 ggsave(file = "out/images/v015_nonT.png", width = 15, height = 10)
 
-
+# Cluster the cells according to RNA and visualize expression of key genes and proteins
 DefaultAssay(v015_dm) <- "RNA"
 FeaturePlot(v015_dm, features = c("rna_MS4A1", "adt_CD20", "rna_CD14", "adt_CD14", "rna_CD3E", "rna_TRAC", "rna_TRDV1", "rna_TRDV3", "rna_TRDV2", "rna_TRGV9"))
 ggsave(file = "out/images/v015_nonT_RNA.png", width = 15, height = 10)
-
 
 
 ## Save the DE genes and Seurat Objects ##
@@ -210,17 +210,21 @@ saveRDS(v113_dm, file = "out/seurat_objects/v113_clust.rds")
 saveRDS(v015_dm, file = "out/seurat_objects/v015_clust.rds")
 
 
+
 ###########################################
 ## Exclude the non-T cells from the data ##
 ###########################################
 
-#Read in the Seurat objects and DE genes
+# Read in the Seurat objects and DE genes
 dg0d_dm <- readRDS(file = "out/seurat_objects/dg0d_clust.rds")
 dg0h_dm <- readRDS(file = "out/seurat_objects/dg0h_clust.rds")
 v113_dm <- readRDS(file = "out/seurat_objects/v113_clust.rds")
 v015_dm <- readRDS(file = "out/seurat_objects/v015_clust.rds")
 
-#Exclude the non-T cell clusters in each PTID
+
+# Exclude the non-T cell clusters for each donor
+# For donor DG0D, the non-T cell clusters were most apparent using the ADT clusters
+# For the remaining donors, the non-T cell clusters were most apparent using the RNA clusters
 DefaultAssay(dg0d_dm) <- "adt"
 Idents(dg0d_dm) <- "adt_snn_res.0.4"
 dg0d_T <- dg0d_dm %>%
@@ -245,7 +249,7 @@ v015_T <- v015_dm %>%
   subset(idents = c(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13))
 unique(v015_T$RNA_snn_res.0.5)
 
-#Save the new T-only objects
+# Save the new T-only objects
 saveRDS(dg0d_T, file = "out/seurat_objects/dg0d_T.rds")
 saveRDS(dg0h_T, file = "out/seurat_objects/dg0h_T.rds")
 saveRDS(v113_T, file = "out/seurat_objects/v113_T.rds")
