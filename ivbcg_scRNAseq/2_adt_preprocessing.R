@@ -47,6 +47,8 @@ dg0h_dm <- NormalizeData(dg0h_dm, normalization.method = "CLR", margin = 2, assa
 v113_dm <- NormalizeData(v113_dm, normalization.method = "CLR", margin = 2, assay = "adt")
 v015_dm <- NormalizeData(v015_dm, normalization.method = "CLR", margin = 2, assay = "adt")
 
+
+#Visualize the normalized ADT signals
 RidgePlot(dg0d_dm, assay = "adt", features = rownames(dg0d_dm), ncol = 4)
 ggsave(file = "out/images/dg0d_adt_ridge.png", width = 15, height = 15)
 
