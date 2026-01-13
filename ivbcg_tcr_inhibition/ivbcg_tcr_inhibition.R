@@ -8,26 +8,74 @@ library(viridis)
 library(ggpubr)
 library(ggedit)
 
-# Read in the CSVs
-df <- read.csv("table_concat2.csv")
+## NOTE: The study animal IDs have been altered in the public SRA files.
+## Please substitute the anonymized IDs (left) in the SRA downloads for the following animal IDs (right):
+## SEDXX2: V113
+## SEDXX5: V015
+## SEDXX6: DG0D
+## SEDXX7: DG0H
+## 20221: 36327
+## 4219: DF4P
+## 5075: D12L
+## 19821: MC30
+## 4119: DF2C
+## 22119: A14V139
+## 5076: DIC4
+## 5077: 17C231
+## 8321: MF46
+## 21519: HRP
+## 21819: DGKM
+## 4319: O8M
+## 5078: P599
+## 5079: 18C062
+## 20021:36852
+## 4519: DF1R
+## 5078:P599
+## 5079: 18C062
+## 20021: 36852
+## 4519: DF1R
+## 21219: DGPR
+## 5219: O4A
+## 5080: DHZI
+## 5081: 16C192
+## 22619: DGHL
+## 21919: DGFM
+## 4819: OCC
+## 5082: DIAV
+## 5083: DI4R
+## 19421: 36818
+## 19221: MI12
+## 19521: MB92
+## 2618: 2618
+## 2718: 2718
+## 2918: 2918
 
+# Read in the CSV
+df <- read.csv("tcr_inhibition.csv")
+
+## NOTE: In the dataframe, US = unstimulated,Cytok = cytokine-stimulated, CsA = Cyclosporin A, NI = no inhibitor
+## The experiments also included a MAPK inhibitor, but we did not include these data due to broad effects of MAPK inhibition
 
 ####################################
 ## Background subtraction -- PBMC ##
 ####################################
 
+# Filter out the AB T cells and only include PBMC
 df <- df %>% filter(subset != 'tcrab' & tissue == 'pbmc')
 
+# Set the levels for stimulation and cell subset (US = Unstimulated)
 df$stim <- factor(df$stim, levels = c('us', 'pha', 'cytok', 'mtbl'))
 df$subset <- factor(df$subset, levels = c('vg9neg', 'vg9pos', 'cd8', 'cd4'))
 
+# Subset out the stimulation conditions
 df <- df %>% arrange(tissue, timepoint, stim, inhib)
-
 df_us <- df %>% filter(stim == 'us', tissue == 'pbmc')
 df_pha <- df %>% filter(stim == 'pha', tissue == 'pbmc')
 df_cyt <- df %>% filter(stim == 'cytok', tissue == 'pbmc')
 df_mtb <- df %>% filter(stim == 'mtbl', tissue == 'pbmc')
 
+# For each stimulation condition, extract the metadata and merge with 
+# background-subtracted measurements
 metadata <- df_pha[,1:15]
 pha_bgsub <- df_pha[,16:27]-df_us[,16:27]
 pha_bgsub <- cbind(metadata, pha_bgsub)
@@ -48,6 +96,7 @@ mtb_bgsub[mtb_bgsub < 0] <- 0
 ## Calculate medians ##
 #######################
 
+## MtbL-stimulated
 # Calculate median values of readouts from each condition group
 medians <- mtb_bgsub %>% 
   group_by(tissue, timepoint, stim, inhib, subset) %>% 
@@ -58,244 +107,39 @@ medians$median <- "yes" #mark each value as the median
 mtb_bgsub <- dplyr::bind_rows(mtb_bgsub, medians) #combine the tables
 
 
+## PHA-stimulated
+# Calculate median values of readouts from each condition group
+medians <- pha_bgsub %>% 
+  group_by(tissue, timepoint, stim, inhib, subset) %>% 
+  summarize_at(vars(subset_pct_of_tcell:tnf), median, na.rm=TRUE)
+medians$median <- "yes" #mark each value as the median
 
-#######################
-## SET UP FUNCTIONS ###
-#######################
-
-# Create a function generating a ggplot which shows a given statistic within a T cell subset.
-# The plot displays the trajectory of all PTIDs over time as well as the median trajectory.
-# p-values represent paired comparisons between wk0/wk2, wk0/wk4, and wk0/wk8
--
-##################################################
-## How are readouts affected by the inhibitors? ##
-##################################################
-
-a <- df_us %>% filter(timepoint == "wk0" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk0")
-b <- df_us %>% filter(timepoint == "wk2" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk2")
-c <- df_us %>% filter(timepoint == "wk4" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk4")
-d <- df_us %>% filter(timepoint == "wk8" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk8")
-ggarrange(a,b,c,d, ncol = 2, nrow = 2)
-
-a <- pha_bgsub %>% filter(timepoint == "wk0" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk0")
-b <- pha_bgsub %>% filter(timepoint == "wk2" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk2")
-c <- pha_bgsub %>% filter(timepoint == "wk4" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk4")
-d <- pha_bgsub %>% filter(timepoint == "wk8" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk8")
-ggarrange(a,b,c,d, ncol = 2, nrow = 2)
-
-a <- cyt_bgsub %>% filter(timepoint == "wk0" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk0")
-b <- cyt_bgsub %>% filter(timepoint == "wk2" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk2")
-c <- cyt_bgsub %>% filter(timepoint == "wk4" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk4")
-d <- cyt_bgsub %>% filter(timepoint == "wk8" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk8")
-ggarrange(a,b,c,d, ncol = 2, nrow = 2)
-
-a <- mtb_bgsub %>% filter(timepoint == "wk0" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk0")
-b <- mtb_bgsub %>% filter(timepoint == "wk2" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk2")
-c <- mtb_bgsub %>% filter(timepoint == "wk4" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9neg, wk4")
-d <- mtb_bgsub %>% filter(timepoint == "wk8" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "cd137", "% cd137 of vg9negw, wk8")
-ggarrange(a,b,c,d, ncol = 2, nrow = 2)
-
-a <- mtb_bgsub %>% filter(timepoint == "wk0" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "ifng", "% ifng of vg9neg, wk0")
-b <- mtb_bgsub %>% filter(timepoint == "wk2" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "ifng", "% ifng of vg9neg, wk2")
-c <- mtb_bgsub %>% filter(timepoint == "wk4" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "ifng", "% ifng of vg9neg, wk4")
-d <- mtb_bgsub %>% filter(timepoint == "wk8" & inhib != 'mapk') %>% 
-  make_pbmc_plt("vg9neg", "ifng", "% ifng of vg9neg, wk8")
-ggarrange(a,b,c,d, ncol = 2, nrow = 2)
+# Merge medians with df
+pha_bgsub <- dplyr::bind_rows(pha_bgsub, medians) #combine the tables
 
 
 
-###############################################################
-## How are readouts induced by cytokine and PHA stimulation? ##
-###############################################################
+## Cytokine-stimulated
+# Calculate median values of readouts from each condition group
+medians <- cyt_bgsub %>% 
+  group_by(tissue, timepoint, stim, inhib, subset) %>% 
+  summarize_at(vars(subset_pct_of_tcell:tnf), median, na.rm=TRUE)
+medians$median <- "yes" #mark each value as the median
 
-df_temp <- df %>% filter(inhib == 'ni' & tissue == 'pbmc')
-
-# Week 0
-a <- df_temp %>% filter(timepoint == 'wk0') %>% ggplot(aes(x = stim, y = cd69)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-b <- df_temp %>% filter(timepoint == 'wk0') %>% ggplot(aes(x = stim, y = cd137)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-c <- df_temp %>% filter(timepoint == 'wk0') %>% ggplot(aes(x = stim, y = cd107a)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-d <- df_temp %>% filter(timepoint == 'wk0') %>% ggplot(aes(x = stim, y = granzymeb)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-e <- df_temp %>% filter(timepoint == 'wk0') %>% ggplot(aes(x = stim, y = granzymek)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-f <- df_temp %>% filter(timepoint == 'wk0') %>% ggplot(aes(x = stim, y = ifng)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-g <- df_temp %>% filter(timepoint == 'wk0') %>% ggplot(aes(x = stim, y = tnf)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-ggarrange(a, b, c, d, e, f, g, ncol = 2, nrow = 4)
+# Merge medians with df
+cyt_bgsub <- dplyr::bind_rows(cyt_bgsub, medians) #combine the tables
 
 
-# Week 8
-a <- df_temp %>% filter(timepoint == 'wk8') %>% ggplot(aes(x = stim, y = cd69)) +
-  geom_dotplot(binaxis = 'y', stackdir = 'center') +
-  facet_wrap(~subset, ncol = 5)
-
-b <- df_temp %>% filter(timepoint == 'wk8') %>% ggplot(aes(x = stim, y = cd137)) +
-  geom_dotplot(position = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-c <- df_temp %>% filter(timepoint == 'wk8') %>% ggplot(aes(x = stim, y = cd107a)) +
-  geom_dotplot(position = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-d <- df_temp %>% filter(timepoint == 'wk8') %>% ggplot(aes(x = stim, y = granzymeb)) +
-  geom_dotplot(position = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-e <- df_temp %>% filter(timepoint == 'wk8') %>% ggplot(aes(x = stim, y = granzymek)) +
-  geom_dotplot(position = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-f <- df_temp %>% filter(timepoint == 'wk8') %>% ggplot(aes(x = stim, y = ifng)) +
-  geom_dotplot(position = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-g <- df_temp %>% filter(timepoint == 'wk8') %>% ggplot(aes(x = stim, y = tnf)) +
-  geom_dotplot(position = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-ggarrange(a, b, c, d, e, f, g, ncol = 2, nrow = 4)
-
-
-
-
-a <- df_temp %>% filter(timepoint == 'wk8') %>% arrange(stim) %>%
-  ggpaired(x = "stim", y = "cd69", id = "ptid", 
-           line.color = "black",
-           fill = "stim",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d()+
-  ggtitle("% cd69, week 8 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("stim")
-
-b <- df_temp %>% filter(timepoint == 'wk8') %>% arrange(stim) %>%
-  ggpaired(x = "stim", y = "cd137", id = "ptid", 
-           line.color = "black",
-           fill = "stim",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d()+
-  ggtitle("% cd137, week 8 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("stim") 
-
-c <- df_temp %>% filter(timepoint == 'wk8') %>% arrange(stim) %>%
-  ggpaired(x = "stim", y = "cd107a", id = "ptid", 
-           line.color = "black",
-           fill = "stim",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d()+
-  ggtitle("% cd107a, week 8 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("stim") 
-
-d <- df_temp %>% filter(timepoint == 'wk8') %>% arrange(stim) %>%
-  ggpaired(x = "stim", y = "granzymeb", id = "ptid", 
-           line.color = "black",
-           fill = "stim",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d()+
-  ggtitle("% granzyme b, week 8 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("stim") 
-
-e <- df_temp %>% filter(timepoint == 'wk8') %>% arrange(stim) %>%
-  ggpaired(x = "stim", y = "granzymek", id = "ptid", 
-           line.color = "black",
-           fill = "stim",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d()+
-  ggtitle("% granzyme k, week 8 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("stim") 
-
-f <- df_temp %>% filter(timepoint == 'wk8') %>% arrange(stim) %>%
-  ggpaired(x = "stim", y = "ifng", id = "ptid", 
-           line.color = "black",
-           fill = "stim",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d()+
-  ggtitle("% ifn-g, week 8 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("stim") 
-
-g <- df_temp %>% filter(timepoint == 'wk8') %>% arrange(stim) %>%
-  ggpaired(x = "stim", y = "tnf", id = "ptid", 
-           line.color = "black",
-           fill = "stim",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d()+
-  ggtitle("% tnf, week 8 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("stim") 
-
-ggarrange(a, b, c, d, e, f, g, ncol = 4, nrow = 2, common.legend = T)
 
 #################################
 ## Are the inhibitors working? ##
 #################################
 
+## Repeated code blocks visualize CD137 and IFN-g
+
 pha_bgsub$inhib <- factor(pha_bgsub$inhib, levels = c('ni', 'csa', 'mapk'))
 cyt_bgsub$inhib <- factor(cyt_bgsub$inhib, levels = c('ni', 'csa', 'mapk'))
 mtb_bgsub$inhib <- factor(mtb_bgsub$inhib, levels = c('ni', 'csa', 'mapk'))
-
 
 
 ## PHA plus inhibitors
@@ -359,54 +203,11 @@ cyt_bgsub %>% filter(timepoint == 'wk8', inhib != 'mapk') %>% arrange(stim) %>%
 
 
 
-
 #########################################################
 ## How do the inhibitors affect MtbL-stimulated cells? ##
 #########################################################
 
 ## Set up the function
-
-make_plot <- function(in_df, subset_use, stat_use, title_use) {
-  new_df <- in_df %>% filter(subset == subset_use)
-  new_df2 <- new_df %>% filter(median != "yes")
-  out <-
-    ggpaired(
-      new_df,
-      x = "inhib",
-      y = stat_use,
-      id = "ptid",
-      color = "median",
-      line.color = "median",
-      facet.by = 'timepoint',
-      palette = c("grey", "black"),
-      point.size = 1.5,
-      line.size = 1.5,
-      short.panel.labs = FALSE
-    ) +
-    ggtitle(title_use) +
-    ylab("Freq of Parent") +
-    xlab("Timepoint") +
-    rremove("legend") +
-    stat_compare_means(
-      data = new_df2,
-      comparisons = list(c("ni", "csa")),
-      method = "wilcox.test",
-      paired = T,
-      show.legend = T
-    ) +
-    stat_summary(
-      aes(group = inhib),
-      fun = median,
-      geom = 'line',
-      color = 'black'
-    )
-  rremove("legend")
-  
-  out$layers <- out$layers[-1]
-  return(out)
-}
-
-
 make_plot <- function(in_df, subset_use, stat_use, title_use) {
   new_df <- in_df %>% filter(subset == subset_use)
   new_df2 <- new_df %>% filter(median != "yes")
@@ -451,255 +252,32 @@ make_plot <- function(in_df, subset_use, stat_use, title_use) {
 
 
 ## VG9-NEG ##
-
 a <-  mtb_bgsub %>% filter(inhib != 'mapk') %>% make_plot("vg9neg", "cd137", "% CD137+")
-
 b <- mtb_bgsub %>% filter(inhib != 'mapk') %>% make_plot("vg9neg", "ifng", "% IFN-γ+")
-
 ggarrange(a,b, nrow = 1, ncol = 2)
-
-ggsave('csa_mtb.pdf', width = 10, height = 3, units = 'in')
-
-mtb_bgsub %>% filter(subset == 'vg9neg' & inhib != 'mapk') %>%
-  ggpaired(x = "inhib", y = "cd137", id = "ptid", 
-           line.color = "black",
-           fill = "inhib",
-           facet.by = "timepoint",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d(begin = 0.5, end = 0.8) +
-  ggtitle("% CD137+")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c("ni", "csa")),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
+ggsave('Fig5G.pdf', width = 10, height = 3, units = 'in')
 
 
 
-## COMPARE SUBSETS ##
-## CD137
-a <- mtb_bgsub %>% filter(timepoint == 'wk0', inhib != 'mapk') %>% arrange(stim) %>%
-  ggpaired(x = "inhib", y = "cd137", id = "ptid", 
-           line.color = "black",
-           fill = "inhib",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% cd137, week 0 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c("ni", "csa")),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
+#################################################################
+## How does CsA affect responses in cytokine-stimulated cells? ##
+#################################################################
 
-b <- mtb_bgsub %>% filter(timepoint == 'wk2', inhib != 'mapk') %>% arrange(stim) %>%
-  ggpaired(x = "inhib", y = "cd137", id = "ptid", 
-           line.color = "black",
-           fill = "inhib",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% cd137, week 2 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c("ni", "csa")),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
+#Vg9neg
+a <-  cyt_bgsub %>% filter(inhib != 'mapk') %>% make_plot("vg9neg", "cd137", "% CD137+")
+a <- a + expand_limits(y = 0)
+b <- cyt_bgsub %>% filter(inhib != 'mapk') %>% make_plot("vg9neg", "ifng", "% IFN-γ+")
+b <- b + expand_limits(y = 0)
+ggarrange(a,b, nrow = 1, ncol = 2)
+ggsave(filename = 'SuppFig14.pdf', width = 10, height = 3, units = 'in')
 
-c <- mtb_bgsub %>% filter(timepoint == 'wk4', inhib != 'mapk') %>% arrange(stim) %>%
-  ggpaired(x = "inhib", y = "cd137", id = "ptid", 
-           line.color = "black",
-           fill = "inhib",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% cd137, week 4 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c("ni", "csa")),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
-
-d <- mtb_bgsub %>% filter(timepoint == 'wk8', inhib != 'mapk') %>% arrange(stim) %>%
-  ggpaired(x = "inhib", y = "cd137", id = "ptid", 
-           line.color = "black",
-           fill = "inhib",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% cd137, week 8 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c("ni", "csa")),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
-
-ggarrange(a, b, c, d, ncol = 4, nrow = 1)
-
-
-
-## IFNg
-a <- mtb_bgsub %>% filter(timepoint == 'wk0', inhib != 'mapk') %>% arrange(stim) %>%
-  ggpaired(x = "inhib", y = "ifng", id = "ptid", 
-           line.color = "black",
-           fill = "inhib",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% ifng, week 0 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c("ni", "csa")),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
-
-b <- mtb_bgsub %>% filter(timepoint == 'wk2', inhib != 'mapk') %>% arrange(stim) %>%
-  ggpaired(x = "inhib", y = "ifng", id = "ptid", 
-           line.color = "black",
-           fill = "inhib",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% ifng, week 2 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c("ni", "csa")),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
-
-c <- mtb_bgsub %>% filter(timepoint == 'wk4', inhib != 'mapk') %>% arrange(stim) %>%
-  ggpaired(x = "inhib", y = "ifng", id = "ptid", 
-           line.color = "black",
-           fill = "inhib",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% ifng, week 4 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c("ni", "csa")),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
-
-d <- mtb_bgsub %>% filter(timepoint == 'wk8', inhib != 'mapk') %>% arrange(stim) %>%
-  ggpaired(x = "inhib", y = "ifng", id = "ptid", 
-           line.color = "black",
-           fill = "inhib",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% ifng, week 8 pbmc")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c("ni", "csa")),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
-
-ggarrange(a, b, c, d, ncol = 4, nrow = 1)
 
 
 ####################################################################
-## Are the cells more responsive to PHA or cytokine after IV-BCG? ##
+## Are the cells more responsive to PHA after IV-BCG? ##
 ####################################################################
 
-pha_bgsub %>% filter(inhib == 'ni', tissue == 'pbmc') %>% arrange(stim) %>%
-  ggpaired(x = "timepoint", y = "cd137", id = "ptid", 
-           line.color = "black",
-           fill = "timepoint",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% cd137, pbmc + pha")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c('wk0', 'wk8')),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
-
-ggsave(filename= 'CD137_pha.pdf')
-
-pha_bgsub %>% filter(inhib == 'ni', tissue == 'pbmc') %>% arrange(stim) %>%
-  ggpaired(x = "timepoint", y = "ifng", id = "ptid", 
-           line.color = "black",
-           fill = "timepoint",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% ifng, pbmc + pha")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c('wk0', 'wk8')),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
-
-ggsave(filename= 'ifng_pha.pdf')
-
+## PHA
 pha_bgsub %>% filter(inhib == 'ni', tissue == 'pbmc', subset == 'vg9neg') %>% arrange(stim) %>%
   ggpaired(x = "timepoint", y = "ifng", id = "ptid", 
            line.color = "black",
@@ -711,163 +289,19 @@ pha_bgsub %>% filter(inhib == 'ni', tissue == 'pbmc', subset == 'vg9neg') %>% ar
   ggtitle("% ifng, pbmc + pha")+
   ylab("Frequency within subset") +
   xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c('wk0', 'wk8')),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
+  theme(legend.position = 'none')
+ggsave(filename= 'SuppFig13A.pdf')
 
-ggsave(filename= 'ifng_pha.pdf')
-
-cyt_bgsub %>% filter(inhib == 'ni', tissue == 'pbmc') %>% arrange(stim) %>%
-  ggpaired(x = "timepoint", y = "ifng", id = "ptid", 
+pha_bgsub %>% filter(inhib == 'ni', tissue == 'pbmc', subset == 'vg9neg') %>% arrange(stim) %>%
+  ggpaired(x = "timepoint", y = "cd137", id = "ptid", 
            line.color = "black",
            fill = "timepoint",
-           facet.by = "subset",
            line.size = 0.4, 
            point.size = 2,
            short.panel.labs = FALSE) +
   scale_fill_viridis_d() +
-  ggtitle("% ifng, pbmc + cytok")+
+  ggtitle("% ifng, pbmc + pha")+
   ylab("Frequency within subset") +
   xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c('wk0', 'wk8')),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
-
-cyt_bgsub %>% filter(inhib == 'ni', tissue == 'pbmc') %>% arrange(stim) %>%
-  ggpaired(x = "timepoint", y = "cd69", id = "ptid", 
-           line.color = "black",
-           fill = "timepoint",
-           facet.by = "subset",
-           line.size = 0.4, 
-           point.size = 2,
-           short.panel.labs = FALSE) +
-  scale_fill_viridis_d() +
-  ggtitle("% cd69, pbmc + cytok")+
-  ylab("Frequency within subset") +
-  xlab("inhib") +
-  theme(legend.position = 'none') +
-  stat_compare_means(
-    comparisons = list(c('wk0', 'wk8')),
-    method = "wilcox.test",
-    paired = T,
-    show.legend = T
-  )
-
-
-####################################
-## How does CsA affect BAL cells? ##
-####################################
-
-bal <- df %>% filter(tissue == 'bal' & subset != 'tcrab' & ptid == '36818')
-bal$inhib <- factor(bal$inhib, levels = c('ni', 'csa'))
-
-bal_us <- bal %>% filter(stim == 'us')
-bal_pha <- bal %>% filter(stim == 'pha')
-bal_cyt <- bal %>% filter(stim == 'cytok')
-bal_mtb <- bal %>% filter(stim == 'mtbl')
-
-metadata <- bal_pha[,1:15]
-bal_pha_bgs <- bal_pha[,16:27]-bal_us[,16:27]
-bal_pha_bgs <- cbind(metadata, bal_pha_bgs)
-bal_pha_bgs[bal_pha_bgs < 0] <- 0
-
-metadata <- bal_cyt[,1:15]
-bal_cyt_bgs <- bal_cyt[,16:27]-bal_us[,16:27]
-bal_cyt_bgs <- cbind(metadata, bal_cyt_bgs)
-bal_cyt_bgs[bal_cyt_bgs < 0] <- 0
-
-metadata <- bal_mtb[,1:15]
-bal_mtb_bgs <- bal_mtb[,16:27]-bal_us[,16:27]
-bal_mtb_bgs <- cbind(metadata, bal_mtb_bgs)
-bal_mtb_bgs[bal_mtb_bgs < 0] <- 0
-
-
-## Is CsA working in BAL?
-bal_pha_bgs %>% arrange(desc(inhib)) %>% ggplot(aes(x = inhib, y = cd137)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-bal_cyt_bgs %>% arrange(desc(inhib)) %>% ggplot(aes(x = inhib, y = ifng)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-bal_mtb_bgs %>% arrange(desc(inhib)) %>% ggplot(aes(x = inhib, y = cd137)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-bal_mtb_bgs %>% arrange(desc(inhib)) %>% ggplot(aes(x = inhib, y = ifng)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset, ncol = 5)
-
-
-
-
-#################################################################
-## What happens to unstimulated cells treated with inhibitors? ##
-#################################################################
-
-df_us$inhib <- factor(df_us$inhib, levels = c('ni', 'csa', 'mapk'))
-
-df_us %>% filter(timepoint == 'wk0') %>% ggplot(aes(x = inhib, y = ifng)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset)
-
-df_us %>% filter(timepoint == 'wk0') %>% ggplot(aes(x = inhib, y = cd137)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset)
-
-df_us %>% filter(timepoint == 'wk8') %>% ggplot(aes(x = inhib, y = ifng)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset)
-
-df_us %>% filter(timepoint == 'wk8') %>% ggplot(aes(x = inhib, y = cd137)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset)
-
-
-
-################################
-## Percent reduction with CsA ##
-################################
-
-csa <- mtb_bgsub %>% filter(inhib == 'csa')
-md <- csa[,1:15]
-csa <- csa[,16:27]
-ni <- mtb_bgsub %>% filter(inhib == 'ni')
-ni <- ni[,16:27]
-freq_down <- ni-csa
-pct_down <- (freq_down/ni)*100
-pct_down <- cbind(md, pct_down)
-
-
-pct_down %>% ggplot(aes(x = timepoint, y = hladr)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset)
-
-pct_down  %>% ggplot(aes(x = timepoint, y = cd69)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset)
-
-pct_down  %>% ggplot(aes(x = timepoint, y = cd137)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset)
-
-pct_down  %>% ggplot(aes(x = timepoint, y = cd107a)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset)
-
-pct_down  %>% ggplot(aes(x = timepoint, y = ifng)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset)
-
-pct_down  %>% ggplot(aes(x = timepoint, y = tnf)) +
-  geom_bar(stat = 'identity') +
-  facet_wrap(~subset)
+  theme(legend.position = 'none') 
+ggsave(filename= 'SuppFig13B.pdf')
