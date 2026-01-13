@@ -1,0 +1,307 @@
+---
+title: "Correlations Analysis Code"
+author: "Ziwei Tian"
+date: "2025-08-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load Required Libraries
+
+```{r}
+library(tidyverse)
+library(pracma)
+library(Hmisc)
+library(corrplot)
+library(tidyr)
+library(lme4)
+library(RColorBrewer)
+library(ggrepel)
+```
+
+## Correlation Analysis
+
+### Load Data and Prepare for Analysis
+
+```{r}
+# Load the data and subset the relevant columns
+features.Cell.AUC <- readRDS("BAL.nAUC.RDS")
+features.metadata <- readRDS("features.metadata.RDS")
+Antibody.nAUC <- readRDS("Antibody.nAUC.RDS")
+raw_collab <- read.csv("dose_vg9neg_for_chaungqi(dose_vg9neg_for_chaungqi).csv")
+related <- c("Lg+ Vg9 nAUC",
+             "Lg+ Any/Vg9/g2T17 Abs nAUC", 
+             "Lg+ Bool/CD4 Abs/g+2-17-T+ nAUC", 
+             "Lg+ NK nAUC", 
+             "Lg+ Bool/CD4 Abs/g-2-17+T+ nAUC")
+nAUC_df <- cbind(features.metadata[, c("Pitt ID", "Log IV BCG Dose", "Gender", "Age at Vaccination (yrs)")], features.Cell.AUC[, related], 
+                 Antibody.nAUC[, "Lg+ BAL.IgA nAUC"])
+colnames(nAUC_df)[1] <- "pitt_id"
+nAUC_df <- nAUC_df %>% 
+  mutate(Gender = ifelse(Gender == "F", 1, 0)) %>%
+  rename(Age = `Age at Vaccination (yrs)`)
+
+# Calculate nAUC for the Vg9neg data
+collab_nAUC <- raw_collab %>%
+  mutate(log10cfu = log10(cfu_nex + 1)) %>%
+  group_by(pitt_id) %>% 
+  dplyr::summarize(
+    log10cfu = mean(log10cfu),
+    nAUC_vg9neg_count        = trapz(timepoint, vg9neg_count) / diff(range(timepoint)),
+    nAUC_pct_vg9neg_of_tcell = trapz(timepoint, pct_vg9neg_of_tcell) / diff(range(timepoint)),
+    nAUC_pct_ifng_vg9neg     = trapz(timepoint, pct_ifng_vg9neg) / diff(range(timepoint)),
+    nAUC_pct_il2_vg9neg      = trapz(timepoint, pct_il2_vg9neg) / diff(range(timepoint)),
+    nAUC_pct_tnf_vg9neg      = trapz(timepoint, pct_tnf_vg9neg) / diff(range(timepoint)),
+    nAUC_pct_ifng_il2_tnf    = trapz(timepoint, pct_ifng_il2_tnf_vg9neg) / diff(range(timepoint))
+  )
+
+merged <- left_join(collab_nAUC, nAUC_df, by = "pitt_id")
+merged <- merged[, c(2, 9:11, 3:8, 12:17)]
+
+merged <- merged %>%
+  rename(
+    `Log CFU` = log10cfu,
+    `(L)#Vg9neg nAUC` = nAUC_vg9neg_count,
+    `(L)%Vg9neg nAUC` = nAUC_pct_vg9neg_of_tcell,
+    `(L)%Vg9neg:G nAUC` = nAUC_pct_ifng_vg9neg,
+    `(L)%Vg9neg:2 nAUC` = nAUC_pct_il2_vg9neg,
+    `(L)%Vg9neg:T nAUC` = nAUC_pct_tnf_vg9neg,
+    `(L)%Vg9neg:AnyG2T nAUC` = nAUC_pct_ifng_il2_tnf,
+    `(L)#CD4:G+2-12-T+ nAUC` = `Lg+ Bool/CD4 Abs/g+2-17-T+ nAUC`,
+    `(L)#NK nAUC` = `Lg+ NK nAUC`,
+    `(L)#CD4:G-2-17+T+ nAUC` = `Lg+ Bool/CD4 Abs/g-2-17+T+ nAUC`,
+    `(L)IgA(PPD) nAUC` = `Lg+ BAL.IgA nAUC`,
+    `(L)#Vg9 nAUC` = `Lg+ Vg9 nAUC`,
+    `(L)#Vg9:AnyG2T17 nAUC` = `Lg+ Any/Vg9/g2T17 Abs nAUC`
+  ) %>%
+  as.matrix()
+```
+
+### Spearman's Correlation (Figure 6D)
+
+```{r, fig.height=4, fig.width=4.5}
+res <- rcorr(merged, type="spearman")
+diag(res$P) <- 1
+
+corrplot(
+  res$r,
+  method    = "color",
+  col       = rev(COL2("RdBu", 200)),  
+  p.mat     = res$P,
+  sig.level = c(0.001, 0.01, 0.05),
+  insig     = "label_sig",
+  pch.cex   = 0.62,
+  pch.col   = "grey20",
+  tl.cex    = 0.65, 
+  cl.cex    = 0.5,
+  tl.col ="black"
+)
+```
+
+## Linear Mixed Models
+
+### Load and Prepare Data
+
+```{r}
+# Load the data
+features.metadata <- features.metadata %>%
+  dplyr::select(`Pitt ID`, Cohort, Protection) %>%
+  rename(pitt_id = `Pitt ID`)
+collab <- raw_collab %>%
+  mutate(log10cfu = log10(cfu_nex + 1))
+joint <- right_join(features.metadata, collab, by = "pitt_id")
+joint <- joint[, c(1:3, 15, 7, 9:14)]
+New.data <- readRDS("New.data.RDS")
+New.metadata <- readRDS("New.metadata.RDS")
+related <- c("Lg+ Vg9",
+             "Lg+ Any/Vg9/g2T17 Abs", 
+             "Lg+ Bool/CD4 Abs/g+2-17-T+", 
+             "Lg+ NK", 
+             "Lg+ Bool/CD4 Abs/g-2-17+T+")
+new_meta_df <- cbind(New.metadata[, c("Pitt ID", "Log IV BCG Dose", "Time")], New.data[, related])
+new_meta_df$Time <- as.numeric(new_meta_df$Time)
+
+features.BAL.IgG.IGA <- readRDS("features.BAL.IgG.IGA.RDS")
+IgA <- features.BAL.IgG.IGA[, 3:4]
+IgA$`Pitt ID` <- new_meta_df$`Pitt ID`[1:34]
+CFU <- joint %>%
+  dplyr::select(pitt_id, log10cfu, Cohort, Protection) %>%
+  distinct()
+# IgA <- left_join(IgA, CFU, by = c("Pitt ID" = "pitt_id"))
+IgA_long <- IgA %>%
+  pivot_longer(
+    cols = matches("Lg.*IgA.*[0-9]+$"),
+    names_to    = "Time",
+    names_pattern = ".*?(\\d+)$",
+    values_to   = "Lg+ BAL.IgA"
+  ) %>%
+  mutate(Time = as.numeric(Time))
+
+merged <- full_join(joint, new_meta_df, by = c("pitt_id" = "Pitt ID", "timepoint" = "Time"))
+merged <- full_join(merged, IgA_long, by = c("pitt_id" = "Pitt ID", "timepoint" = "Time"))
+
+merged <- merged %>%
+  left_join(CFU, by = "pitt_id", suffix = c("", "_ref")) %>%
+  mutate(
+    log10cfu = if_else(is.na(log10cfu), log10cfu_ref, log10cfu),
+    Cohort = if_else(is.na(Cohort), Cohort_ref, Cohort),
+    Protection = if_else(is.na(Protection), Protection_ref, Protection)
+  ) %>%
+  dplyr::select(-log10cfu_ref, -Cohort_ref, -Protection_ref) %>%
+  rename(
+    `Log CFU` = log10cfu,
+    `(L)#Vg9neg` = vg9neg_count,
+    `(L)%Vg9neg` = pct_vg9neg_of_tcell,
+    `(L)%Vg9neg:G` = pct_ifng_vg9neg,
+    `(L)%Vg9neg:2` = pct_il2_vg9neg,
+    `(L)%Vg9neg:T` = pct_tnf_vg9neg,
+    `(L)%Vg9neg:AnyG2T` = pct_ifng_il2_tnf_vg9neg,
+    `(L)#CD4:G+2-12-T+` = `Lg+ Bool/CD4 Abs/g+2-17-T+`,
+    `(L)#NK` = `Lg+ NK`,
+    `(L)#CD4:G-2-17+T+` = `Lg+ Bool/CD4 Abs/g-2-17+T+`,
+    `(L)#Vg9` = `Lg+ Vg9`,
+    `(L)#Vg9:AnyG2T17` = `Lg+ Any/Vg9/g2T17 Abs`,
+    `(L)IgA(PPD)` = `Lg+ BAL.IgA`
+  )
+
+biomarker_variables <- c(
+  "(L)#Vg9neg", "(L)%Vg9neg", "(L)%Vg9neg:G", "(L)%Vg9neg:2", 
+  "(L)%Vg9neg:T", "(L)%Vg9neg:AnyG2T", "(L)#Vg9", "(L)#Vg9:AnyG2T17",
+  "(L)#CD4:G+2-12-T+", "(L)#NK", "(L)#CD4:G-2-17+T+", "(L)IgA(PPD)"
+)
+
+# Scale the data
+merged_unscaled <- merged
+merged <- merged %>%
+  mutate(across(all_of(biomarker_variables), ~ scale(.x, center = TRUE, scale = TRUE)))
+colnames(merged) <- colnames(merged_unscaled)
+
+merged$Protection <- ifelse(merged$Protection == "1 Yes", "Protected", "Non-Protected")
+merged$Protection <- factor(merged$Protection, levels = c("Protected", "Non-Protected"))
+```
+
+
+### Perform Linear Mixed Model Analysis (Figure 6E)
+
+```{r}
+perform_lmm_analysis <- function(data, biomarker_vars) {
+  results <- data.frame(
+    variable = character(),
+    t_value = numeric(),
+    p_value_lrt = numeric(),
+    coefficient = numeric(),
+    std_error = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  for (var in biomarker_vars) {
+    # Check if the number of observations and timepoints are sufficient
+    analysis_data <- data[complete.cases(data[c(var, "Log IV BCG Dose", "timepoint", "Protection")]), ]
+    cat("  Complete cases:", nrow(analysis_data), "\n")
+    timepoint_levels <- length(unique(analysis_data$timepoint))
+    cat("  Timepoint levels:", timepoint_levels, "\n")
+    
+    # Fit Linear Mixed Models
+    null_formula <- as.formula(paste0("`", var, "` ~ 1 + `Log IV BCG Dose` + (1|Cohort)"))
+    full_formula <- as.formula(paste0("`", var, "` ~ 1 + `Log IV BCG Dose` + Protection + (1|Cohort)"))
+      
+    null_model <- lmer(null_formula, data = analysis_data, REML = FALSE, 
+                      control = lmerControl(check.conv.singular = "ignore", optimizer="bobyqa",
+                                            optCtrl=list(maxfun=2e8)))
+    full_model <- lmer(full_formula, data = analysis_data, REML = FALSE,
+                      control = lmerControl(check.conv.singular = "ignore", optimizer="bobyqa",
+                                            optCtrl=list(maxfun=2e8)))
+    
+    # Perform Likelihood Ratio Test  
+    lrt_result <- anova(null_model, full_model)
+    p_value_lrt <- lrt_result[2, "Pr(>Chisq)"]
+    full_summary <- summary(full_model)
+    protection_coef <- full_summary$coefficients["ProtectionNon-Protected", ]
+      
+    new_result <- data.frame(
+      variable = var,
+      t_value = protection_coef[3],
+      p_value_lrt = p_value_lrt,
+      coefficient = protection_coef[1],
+      std_error = protection_coef[2],
+      stringsAsFactors = FALSE
+    )
+    
+    results <- rbind(results, new_result)
+  }
+      
+  return(results)
+}
+
+# Perform the LMM analysis
+lmm_results <- perform_lmm_analysis(merged, biomarker_variables)
+lmm_results$neg_log10_pval <- -log10(lmm_results$p_value_lrt)
+
+# Apply Benjamini-Hochberg correction
+lmm_results$p_adj_bh <- p.adjust(lmm_results$p_value_lrt, method = "BH")
+lmm_results$neg_log10_pval_adj <- -log10(lmm_results$p_adj_bh)
+
+# Prepare for plotting
+colors <- RColorBrewer::brewer.pal(11, "RdBu")
+lmm_results$color <- ifelse(lmm_results$t_value > 0, colors[2], colors[10])
+sig_threshold <- -log10(0.05)
+```
+```{r, fig.width=3, fig.height=3}
+# Function to create volcano plot for LMM results
+create_lmm_volcano_plot <- function(data, y_var, title_suffix = "") {
+  # Create x and y limits
+  y_max <- max(data[[y_var]], na.rm = TRUE) * 1.1
+  x_min <- min(data$t_value, na.rm = TRUE)
+  x_max <- max(data$t_value, na.rm = TRUE)
+  x_range <- x_max - x_min
+  
+  # Plot
+  p <- ggplot(data, aes(x = t_value, y = .data[[y_var]])) +
+    geom_point(color = data$color, size = 3, alpha = 0.7) +
+    geom_hline(yintercept = sig_threshold, linetype = "dashed", color = "gray50", size = 0.5) +
+    geom_text_repel(aes(label = variable), #label = ifelse((.data[[y_var]] > sig_threshold), variable, "")),
+                   size = 2.5, color = "black", 
+                   box.padding = 0.28, point.padding = 0.3,
+                   max.overlaps = Inf, min.segment.length = 0) +
+    theme_classic() +
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.line = element_line(color = "black"),
+      axis.text = element_text(color = "black", size = 7),
+      axis.title = element_text(color = "black", size = 8, face = "bold"),
+      plot.title = element_text(hjust = 0.5, size = 9, face = "bold")
+    ) +
+    labs(
+      x = "t-value (Normalized Coefficients)",
+      y = paste0("-log10(", ifelse(y_var == "neg_log10_pval", "P-values)", "Adjusted P-values)")),
+      title = paste0("Volcano Plot - Linear Mixed Model\n", title_suffix)
+    ) +
+    annotate("text", x = x_min + x_range * 0.08, 
+             y = -0.25, label = "Protected", hjust = 0.5, size = 3, color = colors[10]) +
+    annotate("text", x = x_max - x_range * 0.13, 
+             y = -0.25, label = "Non-Protected", hjust = 0.5, size = 3, color = colors[2]) +
+    ylim(-0.25, y_max)
+  
+  return(p)
+}
+
+# Create volcano plots
+volcano_plot_lrt_adj <- create_lmm_volcano_plot(lmm_results, "neg_log10_pval_adj", " (B-H Adjusted P-values)")
+print(volcano_plot_lrt_adj)
+
+print(lmm_results)
+
+# Print significant results (B-H adjusted)
+sig_results_lrt_adj <- lmm_results[lmm_results$p_adj_bh < 0.05, ]
+if(nrow(sig_results_lrt_adj) > 0) {
+  cat("\nSignificant results (B-H adjusted p < 0.05):\n")
+  print(sig_results_lrt_adj[, c("variable", "coefficient", "t_value", "p_adj_bh")])
+} else {
+  cat("\nNo significant results found (B-H adjusted p < 0.05)\n")
+}
+```
+
